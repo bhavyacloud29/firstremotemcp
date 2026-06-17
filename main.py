@@ -56,6 +56,7 @@ async def create_user(
                 user_name
             )
         )
+        await conn.commit()
 
         return {
             "success": True,
@@ -102,11 +103,13 @@ async def add_expense(
                 expense_date
             )
         )
+        await conn.commit()
 
         return {
             "success": True,
             "message": "Expense added successfully"
         }
+    
 
     finally:
 
@@ -147,11 +150,13 @@ async def update_expense(
                 user_id
             )
         )
+        await conn.commit()
 
         return {
             "success": True,
             "updated_rows": 1
         }
+    
 
     finally:
 
@@ -180,6 +185,7 @@ async def delete_expense(
                 user_id
             )
         )
+        await conn.commit()
 
         return {
             "success": True,
