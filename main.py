@@ -9,12 +9,24 @@ import os
 from dotenv import load_dotenv
 from db_init import initialize_database
 from write_access_check import verify_write_access
-asyncio.run(initialize_database())
-asyncio.run(verify_write_access())
+
 
 categories_path=os.path.join(os.path.dirname(__file__),"categories.json")
 #create a fastmcp server instance
 mcp = FastMCP("ExpenseTracker")
+
+@mcp.tool
+async def initialize_expense_tracker():
+
+    await initialize_database()
+
+    await verify_write_access()
+
+    return {
+        "success": True,
+        "message": "Database initialized successfully"
+    }
+
 
 @mcp.tool
 async def create_user(
