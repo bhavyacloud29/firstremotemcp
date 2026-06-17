@@ -1,0 +1,44 @@
+{
+  "categories": [
+    {
+      "id": 1,
+      "name": "Food & Dining"
+    },
+    {
+      "id": 2,
+      "name": "Subscriptions"
+    },
+    {
+      "id": 3,
+      "name": "Mobile & Utilities"
+    },
+    {
+      "id": 4,
+      "name": "Transport"
+    },
+    {
+      "id": 5,
+      "name": "Shopping"
+    },
+    {
+      "id": 6,
+      "name": "Entertainment"
+    },
+    {
+      "id": 7,
+      "name": "Healthcare"
+    },
+    {
+      "id": 8,
+      "name": "Education"
+    },
+    {
+      "id": 9,
+      "name": "Travel"
+    },
+    {
+      "id": 10,
+      "name": "Miscellaneous"
+    }
+  ]
+}
