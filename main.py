@@ -1,9 +1,6 @@
-import random
 from fastmcp import FastMCP
 import json
-from pathlib import Path
 from connection import get_connection, close_pool, release_connection
-import pandas as pd
 import asyncio
 import os
 from dotenv import load_dotenv
@@ -347,8 +344,10 @@ async def monthly_summary(
         return {
             "month": month,
             "year": year,
-            "expense_count": int(row["ExpenseCount"]) if row and row["ExpenseCount"] else 0,
-            "total_spent": float(row["TotalSpent"]) if row and row["TotalSpent"] else 0
+            # Postgres folds unquoted aliases (ExpenseCount, TotalSpent) to
+            # lowercase, so the Record's actual keys are lowercase too.
+            "expense_count": int(row["expensecount"]) if row and row["expensecount"] else 0,
+            "total_spent": float(row["totalspent"]) if row and row["totalspent"] else 0
         }
 
     finally:
@@ -403,7 +402,6 @@ async def shutdown():
 
 
 if __name__ == "__main__":
-    import signal
 
     # Register shutdown handler for graceful shutdown
     loop = asyncio.get_event_loop()
