@@ -2,13 +2,14 @@ import random
 from fastmcp import FastMCP
 import json
 from pathlib import Path
-from connection import get_connection
+from connection import get_connection, close_pool
 import pandas as pd
 import asyncio
 import os 
 from dotenv import load_dotenv
 from db_init import initialize_database
 from write_access_check import verify_write_access
+import signal
 
 
 categories_path=os.path.join(os.path.dirname(__file__),"categories.json")
@@ -24,7 +25,7 @@ async def initialize_expense_tracker():
 
     return {
         "success": True,
-        "message": "Database initialized successfully"
+        "message": "Database initialized successfully with Neon Postgres"
     }
 
 
@@ -196,6 +197,7 @@ async def delete_expense(
     finally:
 
         await conn.close()
+
 
 
 
@@ -413,5 +415,20 @@ def expense_categories():
         return json.load(f)
 
 
+# Add shutdown handler for connection pool
+async def shutdown():
+    await close_pool()
+
+
 if __name__ == "__main__":
+    import signal
+    
+    # Register shutdown handler for graceful shutdown
+    loop = asyncio.get_event_loop()
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        loop.add_signal_handler(
+            sig,
+            lambda: asyncio.create_task(shutdown())
+        )
+    
     mcp.run(transport="http",host="0.0.0.0",port=8000)
