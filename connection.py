@@ -22,6 +22,19 @@ async def get_connection():
     return await POOL.acquire()
 
 
+async def release_connection(conn):
+    """Return a connection to the pool instead of closing it directly.
+
+    Connections obtained via POOL.acquire() are 'checked out' of the pool.
+    Calling conn.close() on them closes the underlying physical connection
+    instead of returning it, which slowly drains the pool. Use this helper
+    wherever you previously called conn.close() on a pooled connection.
+    """
+    global POOL
+    if POOL:
+        await POOL.release(conn)
+
+
 async def init_pool():
     """Initialize connection pool for Neon"""
     # CRITICAL FIX: Use global to update module-level POOL

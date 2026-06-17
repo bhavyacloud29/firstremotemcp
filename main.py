@@ -2,19 +2,20 @@ import random
 from fastmcp import FastMCP
 import json
 from pathlib import Path
-from connection import get_connection, close_pool
+from connection import get_connection, close_pool, release_connection
 import pandas as pd
 import asyncio
-import os 
+import os
 from dotenv import load_dotenv
 from db_init import initialize_database
 from write_access_check import verify_write_access
 import signal
 
 
-categories_path=os.path.join(os.path.dirname(__file__),"categories.json")
-#create a fastmcp server instance
+categories_path = os.path.join(os.path.dirname(__file__), "categories.json")
+# create a fastmcp server instance
 mcp = FastMCP("ExpenseTracker")
+
 
 @mcp.tool
 async def initialize_expense_tracker():
@@ -51,12 +52,12 @@ async def create_user(
                 $1, $2
             )
             """,
-            (
-                user_id,
-                user_name
-            )
+            user_id,
+            user_name
         )
-        await conn.commit()
+        # NOTE: asyncpg has no conn.commit() — execute() autocommits
+        # outside of an explicit transaction block, so no commit call
+        # is needed (or available) here.
 
         return {
             "success": True,
@@ -65,7 +66,8 @@ async def create_user(
 
     finally:
 
-        await conn.close()
+        await release_connection(conn)
+
 
 @mcp.tool
 async def add_expense(
@@ -95,25 +97,22 @@ async def add_expense(
                 $1, $2, $3, $4, $5
             )
             """,
-            (
-                user_id,
-                amount,
-                category,
-                description,
-                expense_date
-            )
+            user_id,
+            amount,
+            category,
+            description,
+            expense_date
         )
-        await conn.commit()
 
         return {
             "success": True,
             "message": "Expense added successfully"
         }
-    
 
     finally:
 
-        await conn.close()
+        await release_connection(conn)
+
 
 @mcp.tool
 async def update_expense(
@@ -129,7 +128,7 @@ async def update_expense(
 
     try:
 
-        await conn.execute(
+        result = await conn.execute(
             """
             UPDATE Expenses
             SET
@@ -141,27 +140,26 @@ async def update_expense(
                 ExpenseId=$1
                 AND UserId=$6
             """,
-            (
-                expense_id,
-                amount,
-                category,
-                description,
-                expense_date,
-                user_id
-            )
+            expense_id,
+            amount,
+            category,
+            description,
+            expense_date,
+            user_id
         )
-        await conn.commit()
+
+        # result looks like "UPDATE 1" — parse the real affected-row count
+        # instead of hardcoding it
+        updated_rows = int(result.split()[-1]) if result else 0
 
         return {
             "success": True,
-            "updated_rows": 1
+            "updated_rows": updated_rows
         }
-    
 
     finally:
 
-        await conn.close()
-
+        await release_connection(conn)
 
 
 @mcp.tool
@@ -174,29 +172,26 @@ async def delete_expense(
 
     try:
 
-        await conn.execute(
+        result = await conn.execute(
             """
             DELETE FROM Expenses
             WHERE ExpenseId=$1
             AND UserId=$2
             """,
-            (
-                expense_id,
-                user_id
-            )
+            expense_id,
+            user_id
         )
-        await conn.commit()
+
+        deleted_rows = int(result.split()[-1]) if result else 0
 
         return {
             "success": True,
-            "deleted_rows": 1
+            "deleted_rows": deleted_rows
         }
 
     finally:
 
-        await conn.close()
-
-
+        await release_connection(conn)
 
 
 @mcp.tool
@@ -206,45 +201,45 @@ async def get_expenses(
     end_date: str = None
 ):
 
-        conn = await get_connection()
+    conn = await get_connection()
 
-        try:
+    try:
 
-            query = """
-            SELECT *
-            FROM Expenses
-            WHERE UserId=$1
+        query = """
+        SELECT *
+        FROM Expenses
+        WHERE UserId=$1
+        """
+
+        params = [user_id]
+
+        if start_date and end_date:
+
+            query += """
+            AND ExpenseDate
+            BETWEEN $2 AND $3
             """
 
-            params = [user_id]
-
-            if start_date and end_date:
-
-                query += """
-                AND ExpenseDate
-                BETWEEN $2 AND $3
-                """
-
-                params.extend(
-                    [
-                        start_date,
-                        end_date
-                    ]
-                )
-
-            rows = await conn.fetch(
-                query,
-                *params
+            params.extend(
+                [
+                    start_date,
+                    end_date
+                ]
             )
 
-            return [
-                dict(row)
-                for row in rows
-            ]
+        rows = await conn.fetch(
+            query,
+            *params
+        )
 
-        finally:
+        return [
+            dict(row)
+            for row in rows
+        ]
 
-            await conn.close()
+    finally:
+
+        await release_connection(conn)
 
 
 @mcp.tool
@@ -270,11 +265,9 @@ async def search_expenses(
                 OR Description LIKE $3
             )
             """,
-            (
-                user_id,
-                search,
-                search
-            )
+            user_id,
+            search,
+            search
         )
 
         return [
@@ -284,7 +277,7 @@ async def search_expenses(
 
     finally:
 
-        await conn.close()
+        await release_connection(conn)
 
 
 @mcp.tool
@@ -307,7 +300,7 @@ async def expenses_by_category(
             GROUP BY Category
             ORDER BY TotalSpent DESC
             """,
-            (user_id,)
+            user_id
         )
 
         return [
@@ -317,8 +310,7 @@ async def expenses_by_category(
 
     finally:
 
-        await conn.close()
-
+        await release_connection(conn)
 
 
 @mcp.tool
@@ -332,6 +324,11 @@ async def monthly_summary(
 
     try:
 
+        # ExpenseDate is stored as TEXT (e.g. "2026-06-15"), and TO_CHAR()
+        # requires a date/timestamp/numeric input, so it errors on a TEXT
+        # column. Match the "YYYY-MM" prefix directly instead.
+        month_prefix = f"{year}-{month:02d}%"
+
         rows = await conn.fetch(
             """
             SELECT
@@ -339,14 +336,10 @@ async def monthly_summary(
                 SUM(Amount) AS TotalSpent
             FROM Expenses
             WHERE UserId=$1
-            AND TO_CHAR(ExpenseDate, 'MM')=$2
-            AND TO_CHAR(ExpenseDate, 'YYYY')=$3
+            AND ExpenseDate LIKE $2
             """,
-            (
-                user_id,
-                f"{month:02d}",
-                str(year)
-            )
+            user_id,
+            month_prefix
         )
 
         row = rows[0] if rows else None
@@ -360,7 +353,7 @@ async def monthly_summary(
 
     finally:
 
-        await conn.close()
+        await release_connection(conn)
 
 
 @mcp.tool
@@ -382,7 +375,7 @@ async def visualize_expenses(
             GROUP BY Category
             ORDER BY TotalSpent DESC
             """,
-            (user_id,)
+            user_id
         )
 
         return {
@@ -395,10 +388,10 @@ async def visualize_expenses(
 
     finally:
 
-        await conn.close()
+        await release_connection(conn)
 
 
-@mcp.resource("expense://categories",mime_type="application.json")
+@mcp.resource("expense://categories", mime_type="application.json")
 def expense_categories():
     with open(categories_path, "r", encoding="utf-8") as f:
         return json.load(f)
@@ -411,7 +404,7 @@ async def shutdown():
 
 if __name__ == "__main__":
     import signal
-    
+
     # Register shutdown handler for graceful shutdown
     loop = asyncio.get_event_loop()
     for sig in (signal.SIGTERM, signal.SIGINT):
@@ -419,5 +412,5 @@ if __name__ == "__main__":
             sig,
             lambda: asyncio.create_task(shutdown())
         )
-    
-    mcp.run(transport="http",host="0.0.0.0",port=8000)
+
+    mcp.run(transport="http", host="0.0.0.0", port=8000)
