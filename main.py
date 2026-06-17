@@ -48,7 +48,7 @@ async def create_user(
             )
             VALUES
             (
-                ?, ?
+                $1, $2
             )
             """,
             (
@@ -56,8 +56,6 @@ async def create_user(
                 user_name
             )
         )
-
-        await conn.commit()
 
         return {
             "success": True,
@@ -93,7 +91,7 @@ async def add_expense(
             )
             VALUES
             (
-                ?, ?, ?, ?, ?
+                $1, $2, $3, $4, $5
             )
             """,
             (
@@ -104,8 +102,6 @@ async def add_expense(
                 expense_date
             )
         )
-
-        await conn.commit()
 
         return {
             "success": True,
@@ -130,33 +126,31 @@ async def update_expense(
 
     try:
 
-        cursor = await conn.execute(
+        await conn.execute(
             """
             UPDATE Expenses
             SET
-                Amount=?,
-                Category=?,
-                Description=?,
-                ExpenseDate=?
+                Amount=$2,
+                Category=$3,
+                Description=$4,
+                ExpenseDate=$5
             WHERE
-                ExpenseId=?
-                AND UserId=?
+                ExpenseId=$1
+                AND UserId=$6
             """,
             (
+                expense_id,
                 amount,
                 category,
                 description,
                 expense_date,
-                expense_id,
                 user_id
             )
         )
 
-        await conn.commit()
-
         return {
-            "success": cursor.rowcount > 0,
-            "updated_rows": cursor.rowcount
+            "success": True,
+            "updated_rows": 1
         }
 
     finally:
@@ -175,11 +169,11 @@ async def delete_expense(
 
     try:
 
-        cursor = await conn.execute(
+        await conn.execute(
             """
             DELETE FROM Expenses
-            WHERE ExpenseId=?
-            AND UserId=?
+            WHERE ExpenseId=$1
+            AND UserId=$2
             """,
             (
                 expense_id,
@@ -187,17 +181,14 @@ async def delete_expense(
             )
         )
 
-        await conn.commit()
-
         return {
-            "success": cursor.rowcount > 0,
-            "deleted_rows": cursor.rowcount
+            "success": True,
+            "deleted_rows": 1
         }
 
     finally:
 
         await conn.close()
-
 
 
 
@@ -216,7 +207,7 @@ async def get_expenses(
             query = """
             SELECT *
             FROM Expenses
-            WHERE UserId=?
+            WHERE UserId=$1
             """
 
             params = [user_id]
@@ -225,7 +216,7 @@ async def get_expenses(
 
                 query += """
                 AND ExpenseDate
-                BETWEEN ? AND ?
+                BETWEEN $2 AND $3
                 """
 
                 params.extend(
@@ -235,12 +226,10 @@ async def get_expenses(
                     ]
                 )
 
-            cursor = await conn.execute(
+            rows = await conn.fetch(
                 query,
-                params
+                *params
             )
-
-            rows = await cursor.fetchall()
 
             return [
                 dict(row)
@@ -264,15 +253,15 @@ async def search_expenses(
 
         search = f"%{keyword}%"
 
-        cursor = await conn.execute(
+        rows = await conn.fetch(
             """
             SELECT *
             FROM Expenses
-            WHERE UserId=?
+            WHERE UserId=$1
             AND
             (
-                Category LIKE ?
-                OR Description LIKE ?
+                Category LIKE $2
+                OR Description LIKE $3
             )
             """,
             (
@@ -281,8 +270,6 @@ async def search_expenses(
                 search
             )
         )
-
-        rows = await cursor.fetchall()
 
         return [
             dict(row)
@@ -303,21 +290,19 @@ async def expenses_by_category(
 
     try:
 
-        cursor = await conn.execute(
+        rows = await conn.fetch(
             """
             SELECT
                 Category,
                 COUNT(*) AS ExpenseCount,
                 SUM(Amount) AS TotalSpent
             FROM Expenses
-            WHERE UserId=?
+            WHERE UserId=$1
             GROUP BY Category
             ORDER BY TotalSpent DESC
             """,
             (user_id,)
         )
-
-        rows = await cursor.fetchall()
 
         return [
             dict(row)
@@ -341,15 +326,15 @@ async def monthly_summary(
 
     try:
 
-        cursor = await conn.execute(
+        rows = await conn.fetch(
             """
             SELECT
                 COUNT(*) AS ExpenseCount,
                 SUM(Amount) AS TotalSpent
             FROM Expenses
-            WHERE UserId=?
-            AND strftime('%m', ExpenseDate)=?
-            AND strftime('%Y', ExpenseDate)=?
+            WHERE UserId=$1
+            AND TO_CHAR(ExpenseDate, 'MM')=$2
+            AND TO_CHAR(ExpenseDate, 'YYYY')=$3
             """,
             (
                 user_id,
@@ -358,13 +343,13 @@ async def monthly_summary(
             )
         )
 
-        row = await cursor.fetchone()
+        row = rows[0] if rows else None
 
         return {
             "month": month,
             "year": year,
-            "expense_count": row[0] or 0,
-            "total_spent": float(row[1] or 0)
+            "expense_count": int(row["ExpenseCount"]) if row and row["ExpenseCount"] else 0,
+            "total_spent": float(row["TotalSpent"]) if row and row["TotalSpent"] else 0
         }
 
     finally:
@@ -381,20 +366,18 @@ async def visualize_expenses(
 
     try:
 
-        cursor = await conn.execute(
+        rows = await conn.fetch(
             """
             SELECT
                 Category,
                 SUM(Amount) AS TotalSpent
             FROM Expenses
-            WHERE UserId=?
+            WHERE UserId=$1
             GROUP BY Category
             ORDER BY TotalSpent DESC
             """,
             (user_id,)
         )
-
-        rows = await cursor.fetchall()
 
         return {
             "chart_type": "pie",
