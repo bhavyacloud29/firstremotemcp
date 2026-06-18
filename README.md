@@ -117,6 +117,4 @@ Whichever route you pick, register that base URL as the server address in your M
 - Postgres folds unquoted column aliases to lowercase. If you add new queries with aliases and read specific keys off the result (e.g. `row["SomeAlias"]`), access them in lowercase (`row["somealias"]`) or quote the alias in SQL to preserve case.
 - Connections are acquired from a shared pool (`connection.py`) and must be returned via `release_connection(conn)` rather than `conn.close()`, or the pool will leak connections over time.
 
-## License
 
-Add your preferred license here (e.g. MIT).
