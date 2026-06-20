@@ -2,6 +2,12 @@
 
 A remote MCP (Model Context Protocol) server for tracking personal expenses. It exposes tools an AI assistant (or any MCP client) can call to create users, log expenses, search and summarize spending, and pull category breakdowns for visualization — backed by a serverless **Neon PostgreSQL** database.
 
+## TL;DR
+- Go to Connectors in claude code or Chatgpt or your MCP Host and add the following remote connector link
+  ```bash
+  https://expenses-remote-mcp.fastmcp.app/mcp
+  ```
+
 ## Features
 
 - Create users and attribute expenses to them
@@ -78,6 +84,7 @@ On first run, call the `initialize_expense_tracker` tool once (via any connected
 
 For a client to connect from outside your machine, the server needs a public, HTTPS-reachable URL. Common options:
 
+- Deploy it on Horizon.prefect.io and point clients at the public URL it gives you. This is the option I am currently using.
 - Deploy to a platform like Render, Fly.io, or Railway and point clients at the public URL it gives you.
 - Run it behind a reverse proxy (Nginx, Caddy) with TLS termination.
 - For quick testing, tunnel it with a tool like `ngrok http 8000`.
@@ -117,6 +124,4 @@ Whichever route you pick, register that base URL as the server address in your M
 - Postgres folds unquoted column aliases to lowercase. If you add new queries with aliases and read specific keys off the result (e.g. `row["SomeAlias"]`), access them in lowercase (`row["somealias"]`) or quote the alias in SQL to preserve case.
 - Connections are acquired from a shared pool (`connection.py`) and must be returned via `release_connection(conn)` rather than `conn.close()`, or the pool will leak connections over time.
 
-## License
 
-Add your preferred license here (e.g. MIT).
